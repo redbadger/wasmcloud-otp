@@ -44,12 +44,32 @@ defmodule HostCoreTest.EventWatcher do
     |> Enum.filter(fn evt -> evt["type"] == type end)
   end
 
-  def actor_started?(pid, public_key) do
-    GenServer.call(pid, :events)
-    |> Enum.filter(fn evt ->
-      evt["type"] ==
-        "com.wasmcloud.lattice.actor_started"
+  # Determines if an event with specified type and data parameters has occurred
+  def assert_received?(pid, event_type, event_data) do
+    events_for_type(pid, event_type)
+    |> find_matching_events(event_data)
+    |> Enum.count() => 0
+  end
+
+  # Finds all events matching the specified data parameters
+  defp find_matching_events(events, data) do
+    Enum.filter(events, fn evt -> data_matches?(evt["data"], data) end)
+  end
+
+  # Compares two sets of data, returning true if the event contains all matching data parameters
+  defp data_matches?(event_data, data) do
+    data
+    |> Enum.map(fn {key, value} ->
+      Map.get(event_data, key) == value
     end)
+    |> Enum.all?()
+  end
+
+  def actor_started?(pid, public_key) do
+    events_for_type(
+      pid,
+      "com.wasmcloud.lattice.actor_started"
+    )
     |> Enum.reduce_while(false, fn evt, _started ->
       data = evt["data"]
 
@@ -62,11 +82,10 @@ defmodule HostCoreTest.EventWatcher do
   end
 
   def provider_started?(pid, contract_id, link_name, public_key) do
-    GenServer.call(pid, :events)
-    |> Enum.filter(fn evt ->
-      evt["type"] ==
-        "com.wasmcloud.lattice.provider_started"
-    end)
+    events_for_type(
+      pid,
+      "com.wasmcloud.lattice.provider_started"
+    )
     |> Enum.reduce_while(false, fn evt, _started ->
       data = evt["data"]
 
