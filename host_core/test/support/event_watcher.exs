@@ -39,16 +39,16 @@ defmodule HostCoreTest.EventWatcher do
     {:reply, state.events, state}
   end
 
-  def events_for_type(pid, type) do
-    GenServer.call(pid, :events)
-    |> Enum.filter(fn evt -> evt["type"] == type end)
-  end
-
   # Determines if an event with specified type and data parameters has occurred
   def assert_received?(pid, event_type, event_data) do
     events_for_type(pid, event_type)
     |> find_matching_events(event_data)
-    |> Enum.count() => 0
+    |> Enum.count() > 0
+  end
+
+  def events_for_type(pid, type) do
+    GenServer.call(pid, :events)
+    |> Enum.filter(fn evt -> evt["type"] == type end)
   end
 
   # Finds all events matching the specified data parameters
@@ -66,66 +66,43 @@ defmodule HostCoreTest.EventWatcher do
   end
 
   def actor_started?(pid, public_key) do
-    events_for_type(
-      pid,
-      "com.wasmcloud.lattice.actor_started"
-    )
-    |> Enum.reduce_while(false, fn evt, _started ->
-      data = evt["data"]
-
-      if data["public_key"] == public_key do
-        {:halt, true}
-      else
-        {:cont, false}
-      end
-    end)
+    assert_received?(pid, "com.wasmcloud.lattice.actor_started", %{"public_key" => public_key})
   end
 
   def provider_started?(pid, contract_id, link_name, public_key) do
-    events_for_type(
-      pid,
-      "com.wasmcloud.lattice.provider_started"
-    )
-    |> Enum.reduce_while(false, fn evt, _started ->
-      data = evt["data"]
+    assert_received?(pid, "com.wasmcloud.lattice.provider_started", %{
+      "contract_id" => contract_id,
+      "link_name" => link_name,
+      "public_key" => public_key
+    })
+  end
 
-      if data["contract_id"] == contract_id &&
-           data["link_name"] == link_name &&
-           data["public_key"] == public_key do
-        {:halt, true}
-      else
-        {:cont, false}
-      end
-    end)
+  defp wait_for_event(pid, event_received, event_debug, timeout \\ 30_000) do
+    cond do
+      timeout <= 0 ->
+        Logger.debug("Timed out waiting for #{event_debug}")
+        {:error, :timeout}
+
+      event_received.() ->
+        :ok
+
+      true ->
+        Logger.debug("#{event_debug} event not received yet, retrying in 1 second")
+        Process.sleep(1_000)
+        wait_for_event(pid, event_received, event_debug, timeout - 1_000)
+    end
   end
 
   def wait_for_actor_start(pid, public_key, timeout \\ 30_000) do
-    cond do
-      timeout <= 0 ->
-        {:error, :timeout}
-
-      actor_started?(pid, public_key) ->
-        :ok
-
-      true ->
-        Logger.debug("Actor started event not received yet, retrying in 1 second")
-        Process.sleep(1_000)
-        wait_for_actor_start(pid, public_key, timeout - 1_000)
-    end
+    wait_for_event(pid, fn -> actor_started?(pid, public_key) end, "actor start", timeout)
   end
 
   def wait_for_provider_start(pid, contract_id, link_name, public_key, timeout \\ 30_000) do
-    cond do
-      timeout <= 0 ->
-        {:error, :timeout}
-
-      provider_started?(pid, contract_id, link_name, public_key) ->
-        :ok
-
-      true ->
-        Logger.debug("Provider started event not received yet, retrying in 1 second")
-        Process.sleep(1_000)
-        wait_for_provider_start(pid, contract_id, link_name, public_key, timeout - 1_000)
-    end
+    wait_for_event(
+      pid,
+      fn -> provider_started?(pid, contract_id, link_name, public_key) end,
+      "provider start",
+      timeout
+    )
   end
 end

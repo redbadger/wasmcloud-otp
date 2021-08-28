@@ -92,7 +92,6 @@ defmodule HostCore.ActorsTest do
     {:ok, _pid} = HostCore.Actors.ActorSupervisor.start_actor(bytes)
     {:ok, _pid} = HostCore.Actors.ActorSupervisor.start_actor(bytes)
     {:ok, _pid} = HostCore.Actors.ActorSupervisor.start_actor(bytes)
-    Process.sleep(1_000)
 
     actor_count =
       Map.get(HostCore.Actors.ActorSupervisor.all_actors(), @kvcounter_key)
@@ -100,7 +99,6 @@ defmodule HostCore.ActorsTest do
 
     assert actor_count == 5
     HostCore.Actors.ActorSupervisor.terminate_actor(@kvcounter_key, 5)
-    Process.sleep(500)
     assert Map.get(HostCore.Actors.ActorSupervisor.all_actors(), @kvcounter_key) == nil
   end
 
