@@ -90,11 +90,11 @@ defmodule HostCoreTest.EventWatcher do
     GenServer.call(pid, :linkdefs)
   end
 
-  # Determines if an event with specified type and data parameters has occurred
-  def assert_received?(pid, event_type, event_data) do
+  # Determines if `count` events with specified type and data parameters has occurred
+  def assert_received?(pid, event_type, event_data, count \\ 1) do
     events_for_type(pid, event_type)
     |> find_matching_events(event_data)
-    |> Enum.count() > 0
+    |> Enum.count() >= count
   end
 
   # Returns all events for a given event type, e.g.
@@ -171,11 +171,11 @@ defmodule HostCoreTest.EventWatcher do
   # e.g. `wait_for_event(pid, :actor_started, %{"public_key" => "MASDASD"}, 30_000)`
   # Data is also optional, and will match on the first event received if not supplied.
   # The key-value pairs in `data` must match the CloudEvent data key-value pair
-  def wait_for_event(pid, event, data \\ %{}, timeout \\ 30_000) do
+  def wait_for_event(pid, event, data \\ %{}, count \\ 1, timeout \\ 30_000) do
     wait_for_event_received(
       pid,
       fn ->
-        assert_received?(pid, "com.wasmcloud.lattice.#{event}", data)
+        assert_received?(pid, "com.wasmcloud.lattice.#{event}", data, count)
       end,
       event,
       timeout
