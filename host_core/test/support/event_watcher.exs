@@ -4,6 +4,8 @@ defmodule HostCoreTest.EventWatcher do
 
   use GenServer
 
+  @event_wait_interval 1_000
+
   defmodule State do
     defstruct [
       :topic,
@@ -46,6 +48,8 @@ defmodule HostCoreTest.EventWatcher do
     |> Enum.count() > 0
   end
 
+  # Returns all events for a given event type, e.g.
+  # `events_for_type(pid, "com.wasmcloud.lattice.actor_stopped")`
   def events_for_type(pid, type) do
     GenServer.call(pid, :events)
     |> Enum.filter(fn evt -> evt["type"] == type end)
@@ -65,10 +69,18 @@ defmodule HostCoreTest.EventWatcher do
     |> Enum.all?()
   end
 
+  # Returns a truthy value indicating if an actor with specified public key has started
   def actor_started?(pid, public_key) do
     assert_received?(pid, "com.wasmcloud.lattice.actor_started", %{"public_key" => public_key})
   end
 
+  # Returns a truthy value indicating if an actor with specified public key has stopped
+  def actor_stopped?(pid, public_key) do
+    assert_received?(pid, "com.wasmcloud.lattice.actor_stopped", %{"public_key" => public_key})
+  end
+
+  # Returns a truthy value indicating if a provider with specified contract_id, link_name,
+  # and public key has started
   def provider_started?(pid, contract_id, link_name, public_key) do
     assert_received?(pid, "com.wasmcloud.lattice.provider_started", %{
       "contract_id" => contract_id,
@@ -77,7 +89,17 @@ defmodule HostCoreTest.EventWatcher do
     })
   end
 
-  defp wait_for_event(pid, event_received, event_debug, timeout \\ 30_000) do
+  # Returns a truthy value indicating if a provider with specified link_name
+  # and public key has stopped
+  def provider_stopped?(pid, link_name, public_key) do
+    assert_received?(pid, "com.wasmcloud.lattice.provider_stopped", %{
+      "link_name" => link_name,
+      "public_key" => public_key
+    })
+  end
+
+  # Helper function to await an event using a truthy callback
+  defp wait_for_event_received(pid, event_received, event_debug, timeout) do
     cond do
       timeout <= 0 ->
         Logger.debug("Timed out waiting for #{event_debug}")
@@ -87,21 +109,63 @@ defmodule HostCoreTest.EventWatcher do
         :ok
 
       true ->
-        Logger.debug("#{event_debug} event not received yet, retrying in 1 second")
-        Process.sleep(1_000)
-        wait_for_event(pid, event_received, event_debug, timeout - 1_000)
+        Logger.debug(
+          "#{event_debug} event not received yet, retrying in #{@event_wait_interval}ms"
+        )
+
+        Process.sleep(@event_wait_interval)
+        wait_for_event_received(pid, event_received, event_debug, timeout - @event_wait_interval)
     end
   end
 
-  def wait_for_actor_start(pid, public_key, timeout \\ 30_000) do
-    wait_for_event(pid, fn -> actor_started?(pid, public_key) end, "actor start", timeout)
+  # Waits for a given event to occur with specified optional data until timeout
+  # e.g. `wait_for_event(pid, :actor_started, %{"public_key" => "MASDASD"}, 30_000)`
+  # Data is also optional, and will match on the first event received if not supplied.
+  # The key-value pairs in `data` must match the CloudEvent data key-value pair
+  def wait_for_event(pid, event, data \\ %{}, timeout \\ 30_000) do
+    wait_for_event_received(
+      pid,
+      fn ->
+        assert_received?(pid, "com.wasmcloud.lattice.#{event}", data)
+      end,
+      event,
+      timeout
+    )
   end
 
+  # Waits for an `actor_started` event to occur with the given public key until timeout
+  def wait_for_actor_start(pid, public_key, timeout \\ 30_000) do
+    wait_for_event_received(
+      pid,
+      fn -> actor_started?(pid, public_key) end,
+      "actor start",
+      timeout
+    )
+  end
+
+  # Waits for an `actor_stopped` event to occur with the given public key until timeout
+  def wait_for_actor_stop(pid, public_key, timeout \\ 30_000) do
+    wait_for_event_received(pid, fn -> actor_stopped?(pid, public_key) end, "actor stop", timeout)
+  end
+
+  # Waits for an `provider_started` event to occur with the given contract_id, link_name,
+  # and public key until timeout
   def wait_for_provider_start(pid, contract_id, link_name, public_key, timeout \\ 30_000) do
-    wait_for_event(
+    wait_for_event_received(
       pid,
       fn -> provider_started?(pid, contract_id, link_name, public_key) end,
       "provider start",
+      timeout
+    )
+  end
+
+  # Waits for an `provider_stopped` event to occur with the given link_name
+  # and public key until timeout
+  def wait_for_provider_stop(pid, link_name, public_key, timeout \\ 30_000) do
+    wait_for_event_received(
+      pid,
+      fn -> provider_stopped?(pid, link_name, public_key) end,
+      "provider stop",
       timeout
     )
   end

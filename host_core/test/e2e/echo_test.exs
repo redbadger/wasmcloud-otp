@@ -14,12 +14,12 @@ defmodule HostCore.E2E.EchoTest do
   @httpserver_link "default"
   @httpserver_path "test/fixtures/providers/httpserver.par.gz"
 
-  test "echo roundtrip", ctx do
+  test "echo roundtrip", %{:evt_watcher => evt_watcher} do
     {:ok, bytes} = File.read("test/fixtures/actors/echo_s.wasm")
     {:ok, _pid} = HostCore.Actors.ActorSupervisor.start_actor(bytes)
     on_exit(fn -> HostCore.Actors.ActorSupervisor.terminate_actor(@echo_key, 1) end)
 
-    :ok = HostCoreTest.EventWatcher.wait_for_actor_start(ctx[:evt_watcher], @echo_key)
+    :ok = HostCoreTest.EventWatcher.wait_for_actor_start(evt_watcher, @echo_key)
 
     {:ok, _pid} =
       HostCore.Providers.ProviderSupervisor.start_provider_from_file(
@@ -38,7 +38,7 @@ defmodule HostCore.E2E.EchoTest do
 
     :ok =
       HostCoreTest.EventWatcher.wait_for_provider_start(
-        ctx[:evt_watcher],
+        evt_watcher,
         httpserver_contract,
         @httpserver_link,
         httpserver_key

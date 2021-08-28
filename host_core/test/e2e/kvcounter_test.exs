@@ -23,12 +23,12 @@ defmodule HostCore.E2E.KVCounterTest do
   @redis_link "default"
   @redis_path "test/fixtures/providers/redis.par.gz"
 
-  test "kvcounter roundtrip", ctx do
+  test "kvcounter roundtrip", %{:evt_watcher => evt_watcher} do
     {:ok, bytes} = File.read(@kvcounter_path)
     {:ok, _pid} = HostCore.Actors.ActorSupervisor.start_actor(bytes)
     on_exit(fn -> HostCore.Actors.ActorSupervisor.terminate_actor(@kvcounter_key, 1) end)
 
-    :ok = HostCoreTest.EventWatcher.wait_for_actor_start(ctx[:evt_watcher], @kvcounter_key)
+    :ok = HostCoreTest.EventWatcher.wait_for_actor_start(evt_watcher, @kvcounter_key)
 
     {:ok, _pid} =
       HostCore.Providers.ProviderSupervisor.start_provider_from_file(
@@ -62,7 +62,7 @@ defmodule HostCore.E2E.KVCounterTest do
 
     :ok =
       HostCoreTest.EventWatcher.wait_for_provider_start(
-        ctx[:evt_watcher],
+        evt_watcher,
         redis_contract,
         @redis_link,
         redis_key
@@ -70,7 +70,7 @@ defmodule HostCore.E2E.KVCounterTest do
 
     :ok =
       HostCoreTest.EventWatcher.wait_for_provider_start(
-        ctx[:evt_watcher],
+        evt_watcher,
         httpserver_contract,
         @httpserver_link,
         httpserver_key
@@ -116,11 +116,11 @@ defmodule HostCore.E2E.KVCounterTest do
     assert resp.body == "{\"counter\":#{incr_count}}"
   end
 
-  test "kvcounter unprivileged access denied", ctx do
+  test "kvcounter unprivileged access denied", %{:evt_watcher => evt_watcher} do
     {:ok, bytes} = File.read(@kvcounter_unpriv_path)
     {:ok, _pid} = HostCore.Actors.ActorSupervisor.start_actor(bytes)
     on_exit(fn -> HostCore.Actors.ActorSupervisor.terminate_actor(@kvcounter_unpriv_key, 1) end)
-    :ok = HostCoreTest.EventWatcher.wait_for_actor_start(ctx[:evt_watcher], @kvcounter_unpriv_key)
+    :ok = HostCoreTest.EventWatcher.wait_for_actor_start(evt_watcher, @kvcounter_unpriv_key)
 
     {:ok, _pid} =
       HostCore.Providers.ProviderSupervisor.start_provider_from_file(
@@ -160,7 +160,7 @@ defmodule HostCore.E2E.KVCounterTest do
 
     :ok =
       HostCoreTest.EventWatcher.wait_for_provider_start(
-        ctx[:evt_watcher],
+        evt_watcher,
         redis_contract,
         @redis_link,
         redis_key
@@ -168,7 +168,7 @@ defmodule HostCore.E2E.KVCounterTest do
 
     :ok =
       HostCoreTest.EventWatcher.wait_for_provider_start(
-        ctx[:evt_watcher],
+        evt_watcher,
         httpserver_contract,
         @httpserver_link,
         httpserver_key
