@@ -104,7 +104,21 @@ defmodule HostCore.E2E.KVCounterTest do
         %{URL: "redis://0.0.0.0:6379"}
       )
 
-    Process.sleep(1000)
+    :ok =
+      HostCoreTest.EventWatcher.wait_for_linkdef(
+        evt_watcher,
+        @kvcounter_key,
+        redis_contract,
+        @redis_link
+      )
+
+    :ok =
+      HostCoreTest.EventWatcher.wait_for_linkdef(
+        evt_watcher,
+        @kvcounter_key,
+        httpserver_contract,
+        @httpserver_link
+      )
 
     HTTPoison.start()
     {:ok, resp} = HTTPoison.get("http://localhost:8081/foobar")
@@ -196,7 +210,21 @@ defmodule HostCore.E2E.KVCounterTest do
         %{URL: "redis://0.0.0.0:6379"}
       )
 
-    Process.sleep(1000)
+    :ok =
+      HostCoreTest.EventWatcher.wait_for_linkdef(
+        evt_watcher,
+        @kvcounter_unpriv_key,
+        redis_contract,
+        @redis_link
+      )
+
+    :ok =
+      HostCoreTest.EventWatcher.wait_for_linkdef(
+        evt_watcher,
+        @kvcounter_unpriv_key,
+        httpserver_contract,
+        @httpserver_link
+      )
 
     HTTPoison.start()
     {:ok, resp} = HTTPoison.get("http://localhost:8081/foobar")

@@ -62,7 +62,14 @@ defmodule HostCore.E2E.EchoTest do
         %{PORT: "8080"}
       )
 
-    Process.sleep(1000)
+    :ok =
+      HostCoreTest.EventWatcher.wait_for_linkdef(
+        evt_watcher,
+        @echo_key,
+        httpserver_contract,
+        @httpserver_link
+      )
+
     HTTPoison.start()
     {:ok, _resp} = HTTPoison.get("http://localhost:8080/foo/bar")
   end

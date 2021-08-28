@@ -10,16 +10,25 @@ defmodule HostCoreTest.EventWatcher do
     defstruct [
       :topic,
       :sub,
-      :events
+      :events,
+      :claims,
+      :linkdefs,
+      :ocirefs
     ]
   end
 
   @impl true
   def init(prefix) do
+    # Subscribe to lattice events stream
     topic = "wasmbus.evt.#{prefix}"
     {:ok, sub} = Gnat.sub(:control_nats, self(), topic)
 
-    {:ok, %State{topic: topic, sub: sub, events: []}}
+    # Register as a cache loader interested party (receive cache events)
+    # Note: this CAN receive previously cached claims, linkdefs, and ocireferences. It's
+    # suggested to restart nats-server between test runs to avoid interfering with tests
+    Registry.register(Registry.EventMonitorRegistry, "cache_loader_events", [])
+
+    {:ok, %State{topic: topic, sub: sub, events: [], claims: %{}, linkdefs: %{}, ocirefs: %{}}}
   end
 
   @impl true
@@ -28,7 +37,38 @@ defmodule HostCoreTest.EventWatcher do
     evt = Jason.decode!(body)
     events = [evt | state.events]
 
-    {:noreply, %State{events: events}}
+    {:noreply, %State{state | events: events}}
+  end
+
+  @impl true
+  def handle_cast({:cache_load_event, :linkdef_removed, ld}, state) do
+    key = {ld.actor_id, ld.contract_id, ld.link_name}
+    linkdefs = Map.delete(state.linkdefs, key)
+
+    {:noreply, %State{state | linkdefs: linkdefs}}
+  end
+
+  @impl true
+  def handle_cast({:cache_load_event, :linkdef_added, ld}, state) do
+    key = {ld.actor_id, ld.contract_id, ld.link_name}
+    map = %{values: ld.values, provider_key: ld.provider_id}
+
+    linkdefs = Map.put(state.linkdefs, key, map)
+
+    {:noreply, %State{state | linkdefs: linkdefs}}
+  end
+
+  @impl true
+  def handle_cast({:cache_load_event, :claims_added, claims}, state) do
+    cmap = Map.put(state.claims, claims.sub, claims)
+
+    {:noreply, %State{state | claims: cmap}}
+  end
+
+  @impl true
+  def handle_cast({:cache_load_event, :ocimap_added, ocimap}, state) do
+    ocirefs = Map.put(state.ocirefs, ocimap.oci_url, ocimap.public_key)
+    {:noreply, %State{state | ocirefs: ocirefs}}
   end
 
   @impl true
@@ -39,6 +79,15 @@ defmodule HostCoreTest.EventWatcher do
   @impl true
   def handle_call(:events, _from, state) do
     {:reply, state.events, state}
+  end
+
+  @impl true
+  def handle_call(:linkdefs, _from, state) do
+    {:reply, state.linkdefs, state}
+  end
+
+  def linkdefs(pid) do
+    GenServer.call(pid, :linkdefs)
   end
 
   # Determines if an event with specified type and data parameters has occurred
@@ -168,5 +217,25 @@ defmodule HostCoreTest.EventWatcher do
       "provider stop",
       timeout
     )
+  end
+
+  # Waits for a linkdef to be established with given parameters until timeout
+  def wait_for_linkdef(pid, actor_id, contract_id, link_name, timeout \\ 30_000) do
+    linkdef = Map.get(linkdefs(pid), {actor_id, contract_id, link_name}, nil)
+
+    cond do
+      linkdef != nil ->
+        :ok
+
+      timeout <= 0 ->
+        Logger.debug("Timed out waiting for linkdef")
+        {:error, :timeout}
+
+      true ->
+        Logger.debug("Linkdef not received yet, retrying in #{@event_wait_interval}ms")
+
+        Process.sleep(@event_wait_interval)
+        wait_for_linkdef(pid, actor_id, contract_id, link_name, timeout - @event_wait_interval)
+    end
   end
 end
